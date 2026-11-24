@@ -40,17 +40,20 @@ if (text.includes("\n") || text.includes("\r")) {
 if (text !== text.trim()) {
   throw new Error("entry must not start or end with whitespace");
 }
-if (/[\u0000-\u001f\u007f]/.test(text)) {
-  throw new Error("entry must not contain control characters");
+if (/[\u0000-\u001f\u007f-\u009f\ufeff]/.test(text)) {
+  throw new Error(
+    "entry must not contain control characters or invisible format marks",
+  );
 }
 
 mkdirSync("/output", { recursive: true });
-writeFileSync("/output/entry.txt", text, "utf8");
+writeFileSync("/output/entry.txt", text, { encoding: "utf8", mode: 0o644 });
 
 // The grader collects outputs as another user than the one the program
-// runs as, so leave the file readable by every user.
+// runs as, so leave the file readable by every user. The mode is set
+// atomically at creation above; only the directory still needs a chmod,
+// since mkdirSync's mode is masked by the process umask.
 chmodSync("/output", 0o755);
-chmodSync("/output/entry.txt", 0o644);
 
 // Read it back and prove the file on disk is exactly the line: a write
 // that silently truncated, re-encoded or padded the entry would otherwise
