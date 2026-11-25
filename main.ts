@@ -46,19 +46,28 @@ if (/[\u0000-\u001f\u007f-\u009f\ufeff]/.test(text)) {
   );
 }
 
-mkdirSync("/output", { recursive: true });
-writeFileSync("/output/entry.txt", text, { encoding: "utf8", mode: 0o644 });
+// The grader mounts the output directory (root-owned, mode 0777) and
+// runs this program as uid 65534 (nobody). A non-owner cannot chmod a
+// directory, so chmodSync on the directory throws EPERM and exits 1 —
+// that is what killed the earlier entry. The directory is the grader's,
+// not the program's: never chmod it. The output dir comes from
+// MAKEFUN_OUTPUT_DIR when the grader sets it, else "/output".
+const outDir = process.env.MAKEFUN_OUTPUT_DIR || "/output";
 
-// The grader collects outputs as another user than the one the program
-// runs as, so leave the file readable by every user. The mode is set
-// atomically at creation above; only the directory still needs a chmod,
-// since mkdirSync's mode is masked by the process umask.
-chmodSync("/output", 0o755);
+mkdirSync(outDir, { recursive: true });
+writeFileSync(`${outDir}/entry.txt`, text, { encoding: "utf8", mode: 0o644 });
+
+// The grader collects the entry as another user, so the file itself
+// must be world-readable. writeFileSync's mode is masked by the process
+// umask (027 would turn 0o644 into 0640), so chmod the file we own to
+// 0o644 after writing — a chmod on a file this program created always
+// succeeds, unlike the directory chmod above that used to fail.
+chmodSync(`${outDir}/entry.txt`, 0o644);
 
 // Read it back and prove the file on disk is exactly the line: a write
 // that silently truncated, re-encoded or padded the entry would otherwise
 // ship a different text to the judge than the one gated above.
-const written = readFileSync("/output/entry.txt", "utf8");
+const written = readFileSync(`${outDir}/entry.txt`, "utf8");
 if (written !== text) {
   throw new Error("entry file does not match the gated line");
 }
